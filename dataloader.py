@@ -4,7 +4,7 @@ from torchtext.vocab import GloVe
 
 class Dataloader:
 
-    def __init__(self, name, length, dimension=50, vocab_size=25000):
+    def __init__(self, name, length, dimension, vocab_size, batch_sizes):
         self.TEXT = data.Field(lower=True, fix_length=length, batch_first=True)
         self.LABEL = data.Field(sequential=False,)
 
@@ -19,13 +19,9 @@ class Dataloader:
             self.LABEL.build_vocab(self.train,)
 
             print("train.fields:", self.train.fields, self.TEXT.vocab.vectors.shape)
-
-    def split(self, batch_sizes=(8, 32, 32)):
-
-        train_iter, dev_iter, test_iter = data.BucketIterator.splits(
+        
+        self.train_iter, self.dev_iter, self.test_iter = data.BucketIterator.splits(
                 (self.train, self.dev, self.test), batch_sizes=batch_sizes, sort_key=lambda x: len(x.text), sort_within_batch=True, repeat=False
             )
-        train_iter.repeat = False
-        test_iter.repeat = False
-
-        return train_iter, dev_iter, test_iter
+        self.train_iter.repeat = False
+        self.test_iter.repeat = False

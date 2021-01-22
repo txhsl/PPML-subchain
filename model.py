@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -29,6 +30,12 @@ class HETextCNN(nn.Module):
     def __init__(self, num_filters, filter_sizes, vocab_size, embedding_size, sequence_length, num_classes):
         super(HETextCNN, self).__init__()
 
+        self.sequence_length = sequence_length
+        self.embedding_size = embedding_size
+        self.num_filters = num_filters
+        self.filter_sizes = filter_sizes
+        self.num_classes = num_classes
+
         self.num_filters_total = num_filters * len(filter_sizes)
         self.embedding = nn.Embedding(vocab_size, embedding_size)
         
@@ -52,3 +59,25 @@ class HETextCNN(nn.Module):
         out = self.fc(out)
         logit = self.sm(out)
         return logit
+
+    def aggregate(self, models):
+        conv_weights = []
+        for size in self.filter_sizes:
+            for channel in range(self.num_filters):
+                conv_weights.append(np.zeros([size, self.embedding_size]))
+        fc_weight = np.zeros(self.fc.weight.shape)
+        fc_bias = np.zeros(self.fc.bias.shape)
+
+        for model in models:
+            for idx in range(len(model.convs)):
+                conv_w = model.convs[idx][0].weight.tolist()
+                for channel in range(self.num_filters):
+                    conv_weights[idx * self.num_filters + channel] += np.array(conv_w[channel][0]) / len(models)
+
+            fc_weight += np.array(model.fc.weight.tolist()) / len(models)
+            fc_bias += np.array(model.fc.bias.tolist()) / len(models)
+
+        for idx in range(len(self.convs)):
+            self.convs[idx][0].weight.data.copy_(torch.from_numpy(np.array([[conv_weights[idx * self.num_filters]], [conv_weights[idx * self.num_filters + 1]]])))
+        self.fc.weight.data.copy_(torch.from_numpy(fc_weight))
+        self.fc.bias.data.copy_(torch.from_numpy(fc_bias))

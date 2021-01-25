@@ -57,14 +57,14 @@ class Subchain:
                 for trainer in self.trainers:
                     trainer.update(model)
 
-                predicted = []
+                predicts = []
                 labels = []
                 for trainer in self.trainers:
-                    predicts, Y = trainer.execute()
-                    predicted.append(predicts)
+                    predicted, Y = trainer.execute()
+                    predicts.append(predicted)
                     labels.append(Y)
 
-                model, acc = owner.execute(torch.cat(predicted, 0), torch.cat(labels, 0))
+                model, acc = owner.execute(torch.cat(predicts, 0), torch.cat(labels, 0))
                 models.append(model)
 
             global_model.aggregate(models)

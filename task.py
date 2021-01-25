@@ -36,6 +36,9 @@ class Task:
         pretrained_embedding = self.loader.TEXT.vocab.vectors
         self.model.embedding.weight.data.copy_(pretrained_embedding)
 
+    def copyfrom(self, model):
+        self.model.aggregate([model])
+
     def update(self, model):
         self.model = model
 

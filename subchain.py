@@ -1,9 +1,9 @@
-from task import Task
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
 from dataloader import Dataloader
+from task import Task
 
 class Trainer:
     def __init__(self, name, dataloader):
@@ -20,14 +20,15 @@ class Trainer:
 class Owner:
     def __init__(self, name, dataloader):
         self.task = Task(dataloader)
+        self.optimizer = optim.Adam(self.task.model.parameters(), lr=1e-2)
         self.name = name
         self.connected = []
     def connect(self, trainer):
         self.connected.append(trainer)
-    def execute(self, optimizer, predicted, labels):
-        return self.task.backpropagation(optimizer, predicted, labels)
+    def execute(self, predicted, labels):
+        return self.task.backpropagation(self.optimizer, predicted, labels)
     def update(self, model):
-        self.task.update(model)
+        self.task.copyfrom(model)
 
 class Subchain:
     def __init__(self, owner_size, trainer_size):
@@ -41,13 +42,15 @@ class Subchain:
             self.trainers.append(Trainer(j, dataloader))
 
     def start(self):
-        # Temp global init
-        model = self.owners[0].task.model
-        optimizer = optim.Adam(model.parameters(), lr=1e-2)
+        # Global init
+        global_model = self.owners[0].task.model
         
         for epoch in range(100):
+            # Owner synchronize
+            for owner in self.owners:
+                owner.update(global_model)
+
             models = []
-            
             for owner in self.owners:
                 # Trainer init
                 model = owner.task.model
@@ -61,14 +64,11 @@ class Subchain:
                     predicted.append(predicts)
                     labels.append(Y)
 
-                model, acc = owner.execute(optimizer, torch.cat(predicted, 0), torch.cat(labels, 0))
+                model, acc = owner.execute(torch.cat(predicted, 0), torch.cat(labels, 0))
                 models.append(model)
 
-            model.aggregate(models)
+            global_model.aggregate(models)
 
-            # Owner init
-            for owner in self.owners:
-                owner.update(model)
-
-            test_acc = self.owners[0].task.evaluate(model)
+            # Evaluate
+            test_acc = self.owners[0].task.evaluate(global_model)
             print("epoch={},测试准确率={}".format(epoch, test_acc))

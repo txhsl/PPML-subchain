@@ -37,7 +37,7 @@ class Task:
         self.model.embedding.weight.data.copy_(pretrained_embedding)
 
     def copyfrom(self, model):
-        self.model.aggregate([model])
+        self.model.aggregate([model], [1])
 
     def update(self, model):
         self.model = model

@@ -8,6 +8,7 @@ from task import Task
 class Trainer:
     def __init__(self, name, dataloader):
         self.task = Task(dataloader)
+        self.height = 0
         self.name = name
         self.connected = []
     def connect(self, owner):
@@ -20,6 +21,7 @@ class Trainer:
 class Owner:
     def __init__(self, name, dataloader):
         self.task = Task(dataloader)
+        self.height = 0
         self.optimizer = optim.Adam(self.task.model.parameters(), lr=1e-2)
         self.name = name
         self.connected = []
@@ -44,6 +46,7 @@ class Subchain:
     def start(self):
         # Global init
         global_model = self.owners[0].task.model
+        global_height = 0
         
         for epoch in range(100):
             # Owner synchronize
@@ -51,12 +54,14 @@ class Subchain:
                 owner.update(global_model)
 
             models = []
+            aggr_weights = []
             for owner in self.owners:
                 # Trainer init
                 model = owner.task.model
                 for trainer in self.trainers:
                     trainer.update(model)
 
+                # Trainer predict
                 predicts = []
                 labels = []
                 for trainer in self.trainers:
@@ -64,10 +69,16 @@ class Subchain:
                     predicts.append(predicted)
                     labels.append(Y)
 
+                # Owner BP
                 model, acc = owner.execute(torch.cat(predicts, 0), torch.cat(labels, 0))
+                
+                # Get weight
+                weight = (global_height - owner.height + 1) ** -2
                 models.append(model)
+                aggr_weights.append(weight)
 
-            global_model.aggregate(models)
+            # Models aggregate
+            global_model.aggregate(models, aggr_weights)
 
             # Evaluate
             test_acc = self.owners[0].task.evaluate(global_model)

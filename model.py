@@ -60,7 +60,7 @@ class HETextCNN(nn.Module):
         logit = self.sm(out)
         return logit
 
-    def aggregate(self, models):
+    def aggregate(self, models, aggr_weights):
         conv_weights = []
         for size in self.filter_sizes:
             for channel in range(self.num_filters):
@@ -68,14 +68,15 @@ class HETextCNN(nn.Module):
         fc_weight = np.zeros(self.fc.weight.shape)
         fc_bias = np.zeros(self.fc.bias.shape)
 
-        for model in models:
-            for idx in range(len(model.convs)):
-                conv_w = model.convs[idx][0].weight.tolist()
+        for i in range(len(models)):
+            model, weight = models[i], aggr_weights[i]
+            for j in range(len(model.convs)):
+                conv_w = model.convs[j][0].weight.tolist()
                 for channel in range(self.num_filters):
-                    conv_weights[idx * self.num_filters + channel] += np.array(conv_w[channel][0]) / len(models)
+                    conv_weights[j * self.num_filters + channel] += np.array(conv_w[channel][0]) * weight / len(models)
 
-            fc_weight += np.array(model.fc.weight.tolist()) / len(models)
-            fc_bias += np.array(model.fc.bias.tolist()) / len(models)
+            fc_weight += np.array(model.fc.weight.tolist()) * weight / len(models)
+            fc_bias += np.array(model.fc.bias.tolist()) * weight / len(models)
 
         for idx in range(len(self.convs)):
             self.convs[idx][0].weight.data.copy_(torch.from_numpy(np.array([[conv_weights[idx * self.num_filters]], [conv_weights[idx * self.num_filters + 1]]])))

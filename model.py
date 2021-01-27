@@ -73,10 +73,10 @@ class HETextCNN(nn.Module):
             for j in range(len(model.convs)):
                 conv_w = model.convs[j][0].weight.tolist()
                 for channel in range(self.num_filters):
-                    conv_weights[j * self.num_filters + channel] += np.array(conv_w[channel][0]) * weight / len(models)
+                    conv_weights[j * self.num_filters + channel] += np.array(conv_w[channel][0]) * weight
 
-            fc_weight += np.array(model.fc.weight.tolist()) * weight / len(models)
-            fc_bias += np.array(model.fc.bias.tolist()) * weight / len(models)
+            fc_weight += np.array(model.fc.weight.tolist()) * weight
+            fc_bias += np.array(model.fc.bias.tolist()) * weight
 
         for idx in range(len(self.convs)):
             self.convs[idx][0].weight.data.copy_(torch.from_numpy(np.array([[conv_weights[idx * self.num_filters]], [conv_weights[idx * self.num_filters + 1]]])))

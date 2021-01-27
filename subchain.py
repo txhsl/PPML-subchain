@@ -83,6 +83,10 @@ class Subchain:
             self.block.append([model, owner.height])
 
     def run(self, connections):
+        # FL settings
+        alpha = 0.6
+        a = 10
+
         for idx in range(len(self.owners)):
             _thread.start_new_thread(self.groupstart, (self.owners[idx], connections[idx]))
 
@@ -99,11 +103,14 @@ class Subchain:
             print("Height", self.height + 1, "Blocksize", len(self.block))
             for transaction in self.block:
                 models.append(transaction[0])
-                weight = (self.height - transaction[1] + 1) ** -2
+                weight = (self.height - transaction[1] + 1) ** -a
                 aggr_weights.append(weight)
                 total_weight += weight
             for idx in range(len(aggr_weights)):
                 aggr_weights[idx] /= total_weight
+                aggr_weights[idx] *= 1 - alpha
+            models.append(self.model)
+            aggr_weights.append(alpha)
             print(aggr_weights)
             self.model.aggregate(models, aggr_weights)
 

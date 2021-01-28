@@ -20,6 +20,20 @@ class Trainer:
     def update(self, model, height):
         self.task.update(model)
         self.height = height
+    def start(self):
+        while True:
+            for owner in self.connected:
+                self.update(owner.task.model, owner.height)
+
+                # Predict
+                owner.model_lock.acquire()
+                predicted, Y = self.execute()
+                owner.model_lock.release()
+
+                # Seedback
+                owner.message_lock.acquire()
+                owner.receive(predicted, Y, self.height)
+                owner.message_lock.release()
 
 class Owner:
     def __init__(self, name, dataloader):
@@ -27,8 +41,12 @@ class Owner:
         self.height = 0
         self.optimizer = optim.Adam(self.task.model.parameters(), lr=1e-2)
         self.name = name
-        self.duration = 3
         self.connected = []
+
+        self.predicts = []
+        self.labels = []
+        self.message_lock = _thread.allocate_lock()
+        self.model_lock = _thread.allocate_lock()
     def connect(self, trainer):
         self.connected.append(trainer)
     def execute(self, predicted, labels):
@@ -36,13 +54,41 @@ class Owner:
     def update(self, model, height):
         self.task.copyfrom(model)
         self.height = height
+    def receive(self, predicted, Y, height):
+        if self.height == height:
+            self.predicts.append(predicted)
+            self.labels.append(Y)
+    def start(self, chain, connections, batch_amount):
+        for connection in connections:
+            self.connect(chain.trainers[connection])
+            chain.trainers[connection].connect(self)
+        
+        for epoch in range(100):
+            # Owner synchronize
+            self.update(chain.model, chain.height)
+
+            # Collect from trainers
+            while len(self.predicts) < batch_amount:
+                time.sleep(1)
+
+            # Owner BP
+            self.model_lock.acquire()
+            self.message_lock.acquire()
+
+            model, acc = self.execute(torch.cat(self.predicts, 0), torch.cat(self.labels, 0))
+            self.predicts.clear()
+            self.labels.clear()
+
+            self.message_lock.release()
+            self.model_lock.release()
+
+            chain.block.append([model, self.height])
 
 class Subchain:
     def __init__(self, owner_size, trainer_size):
         dataloader = Dataloader('SST', 40, 50, 25000, (16,32,32))
         self.height = 0
         self.block = []
-        self.blocktime = 1
         self.owners = []
         self.trainers = []
         for i in range(owner_size):
@@ -52,54 +98,31 @@ class Subchain:
 
         self.model = self.owners[0].task.model
 
-    def groupstart(self, owner, connections):
-        trainers = []
-        for connection in connections:
-            trainers.append(self.trainers[connection])
-        
-        for epoch in range(100):
-            # Owner synchronize
-            owner.update(self.model, self.height)
-
-            # Trainer init
-            model = owner.task.model
-            for trainer in trainers:
-                trainer.update(model, owner.height)
-
-            # Trainer predict
-            predicts = []
-            labels = []
-            for trainer in trainers:
-                predicted, Y = trainer.execute()
-                predicts.append(predicted)
-                labels.append(Y)
-
-            # Time cost
-            time.sleep(self.blocktime)
-
-            # Owner BP
-            model, acc = owner.execute(torch.cat(predicts, 0), torch.cat(labels, 0))
-                
-            self.block.append([model, owner.height])
-
     def run(self, connections):
         # FL settings
         alpha = 0.6
+        model_amount = 8
+        batch_amount = 32
         a = 10
 
         for idx in range(len(self.owners)):
-            _thread.start_new_thread(self.groupstart, (self.owners[idx], connections[idx]))
+            _thread.start_new_thread(self.owners[idx].start, (self, connections[idx], batch_amount))
+        
+        for trainer in self.trainers:
+            _thread.start_new_thread(trainer.start, ())
 
         time.sleep(0.5)
         # Models aggregate
         while True:
-            time.sleep(self.blocktime)
+            while len(self.block) < model_amount:
+                time.sleep(1)
 
+            # Stage init
             models = []
             aggr_weights = []
             total_weight = 0
-            if len(self.block) == 0:
-                continue
+
+            # Build block
             print("Height", self.height + 1, "Blocksize", len(self.block))
             for transaction in self.block:
                 models.append(transaction[0])
@@ -109,11 +132,13 @@ class Subchain:
             for idx in range(len(aggr_weights)):
                 aggr_weights[idx] /= total_weight
                 aggr_weights[idx] *= 1 - alpha
+
             models.append(self.model)
             aggr_weights.append(alpha)
             print(aggr_weights)
             self.model.aggregate(models, aggr_weights)
 
+            # Reset stage
             self.block.clear()
             self.height += 1
             models.clear()

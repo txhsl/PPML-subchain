@@ -1,5 +1,3 @@
-import time
-import _thread
 from queue import Queue
 from enum import Enum
 
@@ -32,7 +30,6 @@ class Node:
         self.height = 0
         self.view = 0
         self.state = State.WAITING
-        self.state_lock = _thread.allocate_lock()
 
         self.bft_size = bft_size
         self.vote_counter = 0

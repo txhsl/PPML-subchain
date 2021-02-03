@@ -35,12 +35,13 @@ class Node:
         self.vote_counter = 0
         self.change_counter = 0
 
-        self.tx_limit = 16
-
         self.peers = []
         self.msgs = Queue()
 
+        self.lock = False
+
         self.model = None
+        self.model_seq = 0
         self.txs = []
     def is_primary(self):
         return (self.height + self.view) % self.bft_size == self.id
@@ -74,7 +75,7 @@ class Node:
                 self.state = State.BACKUP
         else:
             if self.state == State.COMMITED:
-                print("[Node ", self.id, "] Consensus success. Height: ", self.height, ", view: ", self.view)
+                #print("[Node ", self.id, "] Consensus success. Height: ", self.height, ", view: ", self.view)
                 self.view = 0
                 self.height += 1
                 self.state = State.WAITING
@@ -109,7 +110,7 @@ class Node:
                             self.vote_counter += 1
                             if self.have_enough_vote:
                                 self.state = State.COMMITED
-                                print("[Node ", self.id, "] Commits. But nothing is done here")
+                                #print("[Node ", self.id, "] Commits. But nothing is done here")
                     elif msg.msg_type == MessageType.VIEWCHANGE:
                         if self.state != State.COMMITED and self.state != State.INITIAL:
                             if msg.height != self.height or msg.view != self.view + 1:

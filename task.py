@@ -36,12 +36,15 @@ class Task:
         pretrained_embedding = self.loader.TEXT.vocab.vectors
         self.model.embedding.weight.data.copy_(pretrained_embedding)
 
+    # by copy weights
     def copyfrom(self, model):
         self.model.aggregate([model], [1])
 
+    # by reference
     def update(self, model):
         self.model = model
 
+    # 1 batch
     def train(self):
         self.model.train()
 
@@ -51,6 +54,7 @@ class Task:
 
         return predicted, labels
 
+    # all batch
     def backpropagation(self, optimizer, predicted, labels):
         self.model.train()
         criterion = nn.CrossEntropyLoss()
@@ -63,6 +67,7 @@ class Task:
 
         return self.model, acc
 
+    # several batch
     def evaluate(self, model):
         avg_acc = []
         criterion = nn.CrossEntropyLoss()

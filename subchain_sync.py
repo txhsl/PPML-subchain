@@ -91,11 +91,13 @@ class Subchain:
         batch_amount = 32
         a = 3
 
+        # Build network
         for idx in range(len(self.owners)):
             self.owners[idx].start(self, connections[idx])
         
         # Model training
         while self.height < 100:
+            # Predict and BP
             for trainer in self.trainers:
                 trainer.run(batch_amount)
             for owner in self.owners:
@@ -106,6 +108,7 @@ class Subchain:
             aggr_weights = []
             total_weight = 0
 
+            # Aggregate model
             for transaction in self.block:
                 models.append(transaction[0])
                 weight = (self.height - transaction[1] + 1) ** -a
@@ -127,6 +130,7 @@ class Subchain:
             aggr_weights.clear()
             total_weight = 0
 
+            # Broadcast result
             for owner in self.owners:
                 owner.sync(self)
 

@@ -8,6 +8,7 @@ class Dataloader:
         self.TEXT = data.Field(lower=True, fix_length=length, batch_first=True)
         self.LABEL = data.Field(sequential=False,)
 
+        # SST-2
         if name == 'SST':
             self.train, self.dev, self.test = data.TabularDataset.splits(
                 path='SST-2', train='train.tsv', validation='dev.tsv',

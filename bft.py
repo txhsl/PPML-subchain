@@ -67,6 +67,7 @@ class Node:
             self.vote_counter = 0
             self.state = State.INITIAL
 
+            # start consensus
             if self.is_primary():
                 self.state = State.PRIMARY
                 self.vote_counter += 1
@@ -74,11 +75,13 @@ class Node:
             else:
                 self.state = State.BACKUP
         else:
+            # finish consensus
             if self.state == State.COMMITED:
                 #print("[Node ", self.id, "] Consensus success. Height: ", self.height, ", view: ", self.view)
                 self.view = 0
                 self.height += 1
                 self.state = State.WAITING
+            # deal with message
             else:
                 #print("[Node ", self.id, "] Consensus failed, view changing. Height: ", self.height, ", view: ", self.view)
                 #self.view += 1

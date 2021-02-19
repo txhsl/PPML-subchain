@@ -120,6 +120,7 @@ class Subchain:
         a = 3
         b = 0.6
 
+        # Build network
         for node in self.bft_nodes:
             node.peers = self.bft_nodes
 
@@ -128,26 +129,31 @@ class Subchain:
             node = self.bft_nodes[idx]
             owner.start(self, node, connections[idx])
 
-        # BFT
+        # BFT-based Training
         while self.height < 200:
             heights = []
+            # Foreach
             for idx in range(len(self.bft_nodes)):
                 node = self.bft_nodes[idx]
                 owner = self.owners[idx]
 
+                # Train
                 if node.is_primary():
                     if node.lock and node.model_seq != node.height:
                         node.lock = False
                     if not node.lock:
+                        # Predict
                         for trainer in self.trainers:
                             trainer.run(batch_amount)
-                        
+                        # BP and aggregate
                         owner.run(self, node, a, b)
-
+                        # Evaluate
                         test_acc = owner.evaluate()
                         print("height={},node={},测试准确率={}".format(owner.height, idx, test_acc))
+                        # Mark as trained
                         node.lock = True
 
+                # Push bft
                 node.run()
                 
                 owner.height = node.height

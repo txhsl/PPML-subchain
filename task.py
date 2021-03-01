@@ -16,7 +16,7 @@ test_set_size = 16
 
 class Task:
 
-    def __init__(self, dataloader):
+    def __init__(self, dataloader, left, right):
         # Text-CNN Parameter
         self.loader = dataloader
 
@@ -29,7 +29,8 @@ class Task:
 
         self.train_batches = []
         for batch_idx , batch in enumerate(self.loader.train_iter):
-            self.train_batches.append(batch)
+            if batch_idx >= left and batch_idx < right:
+                self.train_batches.append(batch)
 
         # pretrained embedding
         self.model = HETextCNN(num_filters, filter_sizes, vocab_size, embedding_size, sequence_length, num_classes)

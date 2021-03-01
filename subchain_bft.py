@@ -1,5 +1,3 @@
-import _thread
-import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,10 +7,10 @@ from task import Task
 from bft import State, Node
 
 class Trainer:
-    def __init__(self, name, dataloader):
-        self.task = Task(dataloader)
+    def __init__(self, seq, dataloader):
+        self.task = Task(dataloader, 0, 0)
         self.height = 0
-        self.name = name
+        self.name = seq
         self.connected = []
     def connect(self, owner):
         self.connected.append(owner)
@@ -24,6 +22,7 @@ class Trainer:
     def run(self, batch_amount):
         for owner in self.connected:
             self.update(owner.task.model, owner.height)
+            self.task.train_batches = owner.task.train_batches
             for batch in range(batch_amount):
                 # Predict
                 predicted, Y = self.execute()
@@ -32,11 +31,11 @@ class Trainer:
                 owner.receive(predicted, Y, self.height)
 
 class Owner:
-    def __init__(self, name, dataloader):
-        self.task = Task(dataloader)
+    def __init__(self, seq, dataloader):
+        self.task = Task(dataloader, seq*1000, (seq+1)*1000-1)
         self.height = 0
         self.optimizer = optim.Adam(self.task.model.parameters(), lr=1e-2)
-        self.name = name
+        self.name = seq
         self.connected = []
 
         self.predicts = []

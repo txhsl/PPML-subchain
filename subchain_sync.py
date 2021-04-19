@@ -66,8 +66,12 @@ class Owner:
         # Collect from trainers
 
         # Owner BP
+        #if self.name == 0:
+        #    chain.block.append([self.task.model, self.height])
+        #else:
+        #    model, acc = self.execute(torch.cat(self.predicts, 0), torch.cat(self.labels, 0))
+        #    chain.block.append([model, self.height])
         model, acc = self.execute(torch.cat(self.predicts, 0), torch.cat(self.labels, 0))
-
         chain.block.append([model, self.height])
 
 class Subchain:

@@ -77,8 +77,11 @@ class Owner:
             aggr_weights.append(weight)
             total_weight += weight
         for idx in range(len(aggr_weights)):
-            aggr_weights[idx] /= total_weight
-            aggr_weights[idx] *= 1 - b
+            if total_weight == 0:
+                aggr_weights[idx] = 0
+            else:
+                aggr_weights[idx] /= total_weight
+                aggr_weights[idx] *= 1 - b
 
         models.append(model)
         aggr_weights.append(b)

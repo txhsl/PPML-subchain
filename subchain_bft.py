@@ -10,7 +10,7 @@ class Trainer:
     def __init__(self, seq, dataloader):
         self.task = Task(dataloader, 0, 0)
         self.height = 0
-        self.name = seq
+        self.seq = seq
         self.connected = []
     def connect(self, owner):
         self.connected.append(owner)
@@ -31,12 +31,13 @@ class Trainer:
                 owner.receive(predicted, Y, self.height)
 
 class Owner:
-    def __init__(self, seq, dataloader):
+    def __init__(self, seq, net_size, dataloader):
         self.task = Task(dataloader, seq*1000, (seq+1)*1000-1)
         self.height = 0
         self.optimizer = optim.Adam(self.task.model.parameters(), lr=1e-2)
-        self.name = seq
+        self.seq = seq
         self.connected = []
+        self.node = Node(seq, net_size)
 
         self.predicts = []
         self.labels = []
@@ -51,7 +52,7 @@ class Owner:
         if self.height == height:
             self.predicts.append(predicted)
             self.labels.append(Y)
-    def start(self, chain, node, connections):
+    def start(self, chain, connections):
         # Build connection
         for connection in connections:
             self.connect(chain.trainers[connection])
@@ -59,9 +60,9 @@ class Owner:
         
         # Owner synchronize
         self.update(chain.model, chain.height)
-        node.model = self.task.model
+        self.node.model = self.task.model
 
-    def run(self, chain, node, a, b):
+    def run(self, network, a, b, gap):
         # Collect from trainers
 
         # Owner BP
@@ -71,9 +72,9 @@ class Owner:
         models = []
         aggr_weights = []
         total_weight = 0
-        for peer in chain.bft_nodes:
+        for peer in network:
             models.append(peer.model)
-            weight = (self.height - peer.model_seq + 1) ** -a
+            weight = 1
             aggr_weights.append(weight)
             total_weight += weight
         for idx in range(len(aggr_weights)):
@@ -81,20 +82,21 @@ class Owner:
                 aggr_weights[idx] = 0
             else:
                 aggr_weights[idx] /= total_weight
-                aggr_weights[idx] *= 1 - b
+                aggr_weights[idx] *= 1 - b * gap ** -a
 
         models.append(model)
-        aggr_weights.append(b)
+        aggr_weights.append(b * gap ** -a)
         print(aggr_weights)
-        model.aggregate(models, aggr_weights)
+        self.aggregate(models, aggr_weights)
 
         # Node update
-        #node.model = self.task.model
-        node.model_seq = self.height
+        self.node.model = self.task.model
+        self.node.model_seq = self.height
 
         self.predicts.clear()
         self.labels.clear()
-
+    def aggregate(self, models, weights):
+        self.task.model.aggregate(models, weights)
     def evaluate(self):
         return self.task.evaluate(self.task.model)
 
@@ -104,13 +106,11 @@ class Subchain:
         self.height = 0
         self.block = []
         self.ledger = []
-        self.bft_nodes = []
 
         self.owners = []
         self.trainers = []
         for i in range(owner_size):
-            self.owners.append(Owner(i, dataloader))
-            self.bft_nodes.append(Node(i, owner_size))
+            self.owners.append(Owner(i, owner_size, dataloader))
         for j in range(trainer_size):
             self.trainers.append(Trainer(j, dataloader))
 
@@ -119,46 +119,55 @@ class Subchain:
     def run(self, connections):
         # FL settings
         batch_amount = 32
-        a = 3
-        b = 0.6
+        a = 0.5
+        b = 0.8
 
         # Build network
-        for node in self.bft_nodes:
-            node.peers = self.bft_nodes
+        nodes = []
+        for owner in self.owners:
+            nodes.append(owner.node)
+        for owner in self.owners:
+            owner.node.peers = nodes
 
         for idx in range(len(self.owners)):
             owner = self.owners[idx]
-            node = self.bft_nodes[idx]
-            owner.start(self, node, connections[idx])
+            owner.start(self, connections[idx])
 
         # BFT-based Training
         while self.height < 200:
             heights = []
             # Foreach
-            for idx in range(len(self.bft_nodes)):
-                node = self.bft_nodes[idx]
+            for idx in range(len(self.owners)):
                 owner = self.owners[idx]
+                node = owner.node
 
                 # Train
-                if node.is_primary():
-                    if node.lock and node.model_seq != node.height:
-                        node.lock = False
-                    if not node.lock:
+                if owner.node.is_primary():
+                    if owner.node.is_locked() and owner.node.model_seq != owner.node.height:
+                        owner.node.release()
+                    if not owner.node.is_locked():
+                        gap = 1 + 1
+                        base_model_seq = 0
+                        if owner.seq < gap:
+                            base_model_seq = owner.seq - gap + len(self.owners)
+                        else:
+                            base_model_seq = owner.seq - gap
+                        owner.update(self.owners[base_model_seq].task.model, self.height)
                         # Predict
                         for trainer in self.trainers:
                             trainer.run(batch_amount)
                         # BP and aggregate
-                        owner.run(self, node, a, b)
+                        owner.run(nodes, a, b, gap)
                         # Evaluate
                         test_acc = owner.evaluate()
                         print("height={},node={},测试准确率={}".format(owner.height, idx, test_acc))
                         # Mark as trained
-                        node.lock = True
+                        owner.node.lock()
 
                 # Push bft
-                node.run()
+                owner.node.run()
                 
-                owner.height = node.height
-                heights.append(node.height)
+                owner.height = owner.node.height
+                heights.append(owner.height)
 
             self.height = max(heights)

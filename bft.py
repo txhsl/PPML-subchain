@@ -38,13 +38,21 @@ class Node:
         self.peers = []
         self.msgs = Queue()
 
-        self.lock = False
+        self.locked = False
 
         self.model = None
         self.model_seq = 0
         self.txs = []
     def is_primary(self):
         return (self.height + self.view) % self.bft_size == self.id
+    def is_next(self):
+        return (self.height + self.view + 1) % self.bft_size == self.id
+    def is_locked(self):
+        return self.locked
+    def lock(self):
+        self.locked = True
+    def release(self):
+        self.locked = False
     def have_enough_vote(self):
         return self.vote_counter >= 2 * self.bft_size // 3 + 1
     def broadcast(self, msg):

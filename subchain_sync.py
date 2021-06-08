@@ -2,8 +2,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import _thread
+import time
+
 from dataloader import Dataloader
 from task import Task
+from bft import State, Node
 
 class Trainer:
     def __init__(self, seq, dataloader):
@@ -30,15 +34,17 @@ class Trainer:
                 owner.receive(predicted, Y, self.height)
 
 class Owner:
-    def __init__(self, seq, dataloader):
+    def __init__(self, seq, net_size, dataloader):
         self.task = Task(dataloader, seq*1000, (seq+1)*1000-1)
         self.height = 0
         self.optimizer = optim.Adam(self.task.model.parameters(), lr=1e-2)
         self.name = seq
         self.connected = []
+        self.node = Node(seq, net_size)
 
         self.predicts = []
         self.labels = []
+        self.trained = False
     def connect(self, trainer):
         self.connected.append(trainer)
     def execute(self, predicted, labels):
@@ -76,37 +82,51 @@ class Owner:
 
 class Subchain:
     def __init__(self, owner_size, trainer_size):
-        dataloader = Dataloader('SST', 40, 50, 25000, (16,32,32))
+        dataloader = Dataloader('SST', 60, 100, 25000, (16,32,32))
         self.height = 0
         self.block = []
+        self.ledger = []
 
         self.owners = []
         self.trainers = []
         for i in range(owner_size):
-            self.owners.append(Owner(i, dataloader))
+            self.owners.append(Owner(i, owner_size, dataloader))
         for j in range(trainer_size):
             self.trainers.append(Trainer(j, dataloader))
 
         self.model = self.owners[0].task.model
 
+    def ptrain(self, owner, batch_amount):
+        for trainer in owner.connected:
+            trainer.run(batch_amount)
+        owner.trained = True
+
     def run(self, connections):
         # FL settings
-        alpha = 0.6
+        alpha = 0
         model_amount = 4
-        batch_amount = 32
-        a = 3
+        batch_amount = 8
+        beta = 3
 
         # Build network
         for idx in range(len(self.owners)):
             self.owners[idx].start(self, connections[idx])
+        nodes = []
+        for owner in self.owners:
+            nodes.append(owner.node)
+        for owner in self.owners:
+            owner.node.peers = nodes
         
         # Model training
         while self.height < 100:
             # Predict and BP
-            for trainer in self.trainers:
-                trainer.run(batch_amount)
             for owner in self.owners:
+                _thread.start_new_thread(self.ptrain, (owner, batch_amount))
+            for owner in self.owners:
+                while not owner.trained:
+                    time.sleep(0.1)
                 owner.run(self)
+                owner.trained = False
 
             # Stage init
             models = []
@@ -116,7 +136,7 @@ class Subchain:
             # Aggregate model
             for transaction in self.block:
                 models.append(transaction[0])
-                weight = (self.height - transaction[1] + 1) ** -a
+                weight = (self.height - transaction[1] + 1) ** -beta
                 aggr_weights.append(weight)
                 total_weight += weight
             for idx in range(len(aggr_weights)):
@@ -127,10 +147,19 @@ class Subchain:
             aggr_weights.append(alpha)
 
             self.model.aggregate(models, aggr_weights)
+            
+            while True:
+                heights = []
+                for owner in self.owners:
+                    # Push bft
+                    owner.node.run()
+                    heights.append(owner.node.height)
+                if min(heights) > self.height:
+                    self.height = min(heights)
+                    break
 
             # Reset stage
             self.block.clear()
-            self.height += 1
             models.clear()
             aggr_weights.clear()
             total_weight = 0
